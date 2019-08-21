@@ -1,0 +1,62 @@
+import boto3
+import json
+
+lambda_client = boto3.client('lambda')
+
+def lambda_handler(event, context):
+    #return(event)
+    is_params = False
+    is_i = False
+    is_d = False
+    key = ''
+    #prefix = '/home/ec2-user/environment/python-gqt/'
+    prefix = '/var/task/'
+    bucket_name = "gqt-results"
+    res = ''
+    for param_key in event["queryStringParameters"].keys():
+        if len(event["queryStringParameters"]) == 0:
+            continue
+        if param_key == "params":
+            is_params = True
+            params = event["queryStringParameters"]["params"]
+            param_list = params[1:-1].split("/")
+            for param in param_list:
+                if param == 'g' or param == 'p':
+                    param = '-' + param
+                    key += param + '='
+                elif param == '-g' or param == '-p':
+                    key += param + '='
+                else:
+                    if param[0] and param[-1] == '"' or param[0] and param[-1] == "'":
+                        pass
+                    else:
+                        param = '\"' + param + '\"'
+                    
+                    key += param
+        else:
+            if param_key == 'i' or param_key == '-i':
+                is_i = True
+            elif param_key == 'd' or param_key == '-d':
+                is_d = True
+    #return cmd
+    if not is_i:
+        return("Must enter an -i parameter indicating a GQT index file. Ex: -i=\"ch2\"  or  -i=\"http://gqt-files.s3.amazonaws.com/ALL.chr2.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt\". The full documentation can be found at _________")
+    if not is_params:
+        return("Must enter a params list indicating what query parameters you would like. Ex: params=[\"-p\",\"Gender = 1\",\"-g\",\"maf()<.01\",\"-p\",\"Population in (\'GBR\' \'FIN\')\",\"-g\",\"count(HET)>50\"]. The full documentation can be found at _________")
+    #return(key)
+    key = key[:-1]
+    key = key.replace(" ", "")
+    key = key.replace("'", "*")
+    key = key.replace('"', "*")
+    key = key.replace('=', "*")
+    key = key.replace('<', "*")
+    key = key.replace('>', "*")
+    key = '"' + key + '.txt"'
+    event['Key'] = key
+    response = lambda_client.invoke(FunctionName="gqt_helper", 
+                                           InvocationType='Event',
+                                           Payload=json.dumps(event))
+                                           
+    #print(response)
+    #return(invoke_response)
+    return("Your query will be ready in a few minutes at: " + 'http://' + bucket_name + '.s3.amazonaws.com/' + key[1:-1])

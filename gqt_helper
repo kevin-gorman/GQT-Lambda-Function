@@ -1,0 +1,107 @@
+from __future__ import print_function
+import os
+import subprocess
+import boto3
+context = {"nothing": "nothing"}
+event = {
+  "queryStringParameters": {
+    "i": "http://gqt-files.s3.amazonaws.com/ALL.chr2.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt",
+    "d": "http://gqt-files.s3.amazonaws.com/gqt_v1_integrated_call_samples.20130502.ALL.ped.db",
+    "params": "[p/Gender = 1/g/maf()<.01/-p/Population in (GBR,FIN)/-g/count(HET)>50]"
+  }
+} 
+
+files = ['ALL.chr1.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', 'ALL.chr10.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', 'ALL.chr11.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', 'ALL.chr12.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', 'ALL.chr13.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', 'ALL.chr14.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', 'ALL.chr15.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', 'ALL.chr16.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', 'ALL.chr17.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', 'ALL.chr18.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', 'ALL.chr19.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', 'ALL.chr2.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', 'ALL.chr20.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', 'ALL.chr21.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', 'ALL.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', 'ALL.chr3.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', 'ALL.chr4.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', 'ALL.chr5.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', 'ALL.chr6.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', 'ALL.chr7.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', 'ALL.chr8.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', 'ALL.chr9.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', 'ALL.wgs.phase3_shapeit2_mvncall_integrated_v5b.20130502.sites.bcf.gqt', 'ALL.chrMT.phase3_callmom-v0_4.20130502.genotypes.bcf.gqt', 'ALL.chrX.phase3_shapeit2_mvncall_integrated_v1b.20130502.genotypes.bcf.gqt', 'ALL.chrY.phase3_integrated_v2a.20130502.genotypes.bcf.gqt']
+chs = ['ch1', 'ch10', 'ch11', 'ch12', 'ch13', 'ch14', 'ch15', 'ch16', 'ch17', 'ch18', 'ch19', 'ch2', 'ch20', 'ch21', 'ch22' 'ch3', 'ch4', 'ch5', 'ch6', 'ch7', 'ch8', 'ch9', ]
+def handler(event, context):
+    is_i = False
+    is_d = False
+    is_params = False
+    #prefix = '/home/ec2-user/environment/python-gqt/'
+    prefix = '/var/task/'
+    cmd = ['gqt', 'query']
+    res = ''
+    for param_key in event["queryStringParameters"].keys():
+        
+        if len(event["queryStringParameters"]) == 0:
+            continue
+        if param_key == "params":
+            is_params = True
+            params = event["queryStringParameters"]["params"] 
+            param_list = params[1:-1].split("/")
+            for param in param_list:
+                if param == 'g' or param == 'p':
+                    param = '-' + param
+                    cmd.append(param)
+                elif param == '-g' or param == '-p':
+                    cmd.append(param)
+                else:
+                    if param[0] and param[-1] == '"' or param[0] and param[-1] == "'":
+                        cmd.append(param)
+                    else:
+                        param = '\"' + param + '\"'
+                        cmd.append(param)
+        else:
+            if param_key == 'i' or param_key == '-i':
+                is_i = True
+                if event["queryStringParameters"][param_key] in chs:
+                    index = chs.index(event["queryStringParameters"][param_key])
+                    if param_key == '-i':
+                        cmd.extend([param_key, 'http://gqt-files.s3.amazonaws.com/' + files[index]])
+                    else:
+                        cmd.extend(['-' + param_key, 'http://gqt-files.s3.amazonaws.com/' + files[index]])
+                    continue
+            elif param_key == 'd' or param_key == '-d':
+                is_d = True
+            if param_key[0] != "-":
+                cmd.extend(['-' + param_key, event["queryStringParameters"][param_key]])
+            else:
+                cmd.extend([param_key, event["queryStringParameters"][param_key]])
+    #return cmd
+    if not is_i:
+        return("Must enter an -i parameter indicating a GQT index file. Ex: -i=\"ch2\"  or  -i=\"http://gqt-files.s3.amazonaws.com/ALL.chr2.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt\". The full documentation can be found at _________")
+    if not is_params:
+        return("Must enter a params list indicating what query parameters you would like. Ex: params=[\"-p\",\"Gender = 1\",\"-g\",\"maf()<.01\",\"-p\",\"Population in (\'GBR\' \'FIN\')\",\"-g\",\"count(HET)>50\"]. The full documentation can be found at _________")
+    if not is_d:
+        cmd.extend(['-d', 'http://gqt-files.s3.amazonaws.com/gqt_v1_integrated_call_samples.20130502.ALL.ped.db'])
+    key = event['Key']
+    #return key
+    #key = 'query_test.txt'
+    
+    
+    #cmd = ['gqt', 'query', '-i', 'http://gqt-files.s3.amazonaws.com/ALL.chr2.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt', '-d', 'http://gqt-files.s3.amazonaws.com/gqt_v1_integrated_call_samples.20130502.ALL.ped.db', '-p', u'"Population in (\'GBR\')"', '-g', '"maf()>0.1"']
+    bucket_name = 'gqt-results'
+    
+    
+
+    os.chdir('/tmp')
+    cmd.extend(["|", "aws", "s3", "cp", "-", "s3://" + bucket_name + "/" + key, "--acl", "public-read"])
+    #out_file_name = '/tmp/tst_redir.txt'
+    #f = open(out_file_name, 'r+')
+    response = ''
+    for i in cmd:
+        if type(i) is list:
+            for j in i:
+                response += j + ' '
+        else:
+            response += i + ' '
+    cmd = response
+    #cmd = '/var/task/lib/gqt/bin/gqt query -i http://gqt-files.s3.amazonaws.com/ALL.phase3.autosome.vcf.gz.gqt -d http://gqt-files.s3.amazonaws.com/gqt_v1_integrated_call_samples.20130502.ALL.ped.db -p "Population in (\'GRB\')" -g "maf()<0.01" | aws s3 cp - s3://layer-overflow-bucket/query_test.txt'
+    try:
+        proc = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE)
+        err = proc.communicate()[1]
+        if err == "":
+            return 'http://' + bucket_name + '.s3.amazonaws.com/' + key[1:-1]
+        else:
+            s3_resource = boto3.resource('s3')
+            bucket = s3_resource.Bucket('gqt-results')
+            obj = bucket.put_object(Key=key[1:-1],Body=err, ACL='public-read')
+            return 'http://' + bucket_name + '.s3.amazonaws.com/' + key[1:-1]
+    except Exception as e:
+        
+        s3_resource = boto3.resource('s3')
+        bucket = s3_resource.Bucket('gqt-results')
+        obj = bucket.put_object(Key=key[1:-1],Body=str(e), ACL='public-read')
+        return 'http://' + bucket_name + '.s3.amazonaws.com/' + key[1:-1]
+        
+#print(handler(event, context))
