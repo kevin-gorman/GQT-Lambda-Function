@@ -22,8 +22,7 @@ def handler(event, context):
     cmd = ['gqt', 'query']
     res = ''
     for param_key in event["queryStringParameters"].keys():
-        
-        if len(event["queryStringParameters"]) == 0:
+        if len(event["queryStringParameters"][param_key]) == 0:
             continue
         if param_key == "params":
             is_params = True
@@ -31,10 +30,7 @@ def handler(event, context):
             param_list = params[1:-1].split("/")
             for param in param_list:
                 if param == 'g' or param == 'p':
-                    param = '-' + param
-                    cmd.append(param)
-                elif param == '-g' or param == '-p':
-                    cmd.append(param)
+                    cmd.append('-' + param)
                 else:
                     if param[0] and param[-1] == '"' or param[0] and param[-1] == "'":
                         cmd.append(param)
@@ -42,22 +38,17 @@ def handler(event, context):
                         param = '\"' + param + '\"'
                         cmd.append(param)
         else:
-            if param_key == 'i' or param_key == '-i':
+            res += param_key + ' '
+            if param_key == 'i':
                 is_i = True
                 if event["queryStringParameters"][param_key] in chs:
                     index = chs.index(event["queryStringParameters"][param_key])
-                    if param_key == '-i':
-                        cmd.extend([param_key, 'http://gqt-files.s3.amazonaws.com/' + files[index]])
-                    else:
-                        cmd.extend(['-' + param_key, 'http://gqt-files.s3.amazonaws.com/' + files[index]])
+                    cmd.extend(['-i', 'http://gqt-files.s3.amazonaws.com/' + files[index]])
                     continue
-            elif param_key == 'd' or param_key == '-d':
+            elif param_key == 'd':
                 is_d = True
-            if param_key[0] != "-":
-                cmd.extend(['-' + param_key, event["queryStringParameters"][param_key]])
-            else:
-                cmd.extend([param_key, event["queryStringParameters"][param_key]])
-    #return cmd
+            cmd.extend(['-' + param_key, event["queryStringParameters"][param_key]])
+    #return res
     if not is_i:
         return("Must enter an -i parameter indicating a GQT index file. Ex: -i=\"ch2\"  or  -i=\"http://gqt-files.s3.amazonaws.com/ALL.chr2.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.bcf.gqt\". The full documentation can be found at _________")
     if not is_params:
@@ -86,22 +77,27 @@ def handler(event, context):
         else:
             response += i + ' '
     cmd = response
+    #return cmd
     #cmd = '/var/task/lib/gqt/bin/gqt query -i http://gqt-files.s3.amazonaws.com/ALL.phase3.autosome.vcf.gz.gqt -d http://gqt-files.s3.amazonaws.com/gqt_v1_integrated_call_samples.20130502.ALL.ped.db -p "Population in (\'GRB\')" -g "maf()<0.01" | aws s3 cp - s3://layer-overflow-bucket/query_test.txt'
-    try:
-        proc = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE)
-        err = proc.communicate()[1]
-        if err == "":
-            return 'http://' + bucket_name + '.s3.amazonaws.com/' + key[1:-1]
-        else:
+    num_tries = 0
+    while num_tries < 4:
+        try:
+            proc = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE)
+            err = proc.communicate()[1]
+            if err == "":
+                return 'http://' + bucket_name + '.s3.amazonaws.com/' + key[1:-1]
+            elif err[-4] == "peer":
+                num_tries += 1
+            else:
+                s3_resource = boto3.resource('s3')
+                bucket = s3_resource.Bucket('gqt-results')
+                obj = bucket.put_object(Key=key[1:-1],Body=err, ACL='public-read')
+                return 'http://' + bucket_name + '.s3.amazonaws.com/' + key[1:-1]
+        except Exception as e:
+            
             s3_resource = boto3.resource('s3')
             bucket = s3_resource.Bucket('gqt-results')
-            obj = bucket.put_object(Key=key[1:-1],Body=err, ACL='public-read')
+            obj = bucket.put_object(Key=key[1:-1],Body=str(e), ACL='public-read')
             return 'http://' + bucket_name + '.s3.amazonaws.com/' + key[1:-1]
-    except Exception as e:
-        
-        s3_resource = boto3.resource('s3')
-        bucket = s3_resource.Bucket('gqt-results')
-        obj = bucket.put_object(Key=key[1:-1],Body=str(e), ACL='public-read')
-        return 'http://' + bucket_name + '.s3.amazonaws.com/' + key[1:-1]
         
 #print(handler(event, context))
